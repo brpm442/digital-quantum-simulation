@@ -3,6 +3,142 @@ from qiskit import *
 from useful_maths_methods import *
 from useful_computing_methods import *
 
+def fermionic_version_of_spin_wave_function(spin_wf_qc, N, order='spin', 
+                                            Sz_good=True, connectivity='all'):
+    """
+    Function that generates quantum circuit that converts a multi-spin-1/2
+    wave function into its fermionic version at half-filling. Follows Sec.
+    III of B. Murta and J. Fernández-Rossier, Phys. Rev. B 109, 035128 (2024).
+    Jordan-Wigner transformation is assumed for fermion-to-qubit mapping.
+    spin_wf_qc is a quantum circuit that prepares the N-spin-1/2 wave function.
+    If order == 'spin', qubits are ordered by spin, i.e., spin-down orbitals
+    in the N least significant qubits and spin-up orbitals in the N most significant
+    ones, where the mapping {|0) - spin-up, |1) - spin-down} is assumed in the
+    spin wave function. If order == 'site', qubits are ordered by site, i.e.,
+    even qubits correspond to spin-down orbitals and odd qubits to spin-up orbitals.
+    If sz_good == True and connectivity='all', constant-depth circuits are generated 
+    for both orders, otherwise O(N)-depth overhead applied to order='spin'.
+    If connectivity='lin', networks of fermionic SWAPs are added to make sure two-qubit
+    gates are only applied between pairs of adjacent qubits.
+    """
+
+    # Subfunction that determines positions of pairs of qubits on which
+    # fermionic SWAPs are applied to change order from site to spin 
+    # (if direction == 'site2spin') or from spin to site (if direction
+    # == 'spin2site'). N is the number of lattice sites.
+    def fSWAP_network_qubit_pairs(N, direction='site2spin'):
+        layers_of_fSWAPs = []
+        for i in range(N-1):
+            new_layer_of_fSWAPs = []
+            for j in range(N-i-1):
+                new_qubit_pair = [i+2*j+1,i+2*j+2]
+                new_layer_of_fSWAPs.append(new_qubit_pair)
+            layers_of_fSWAPs.append(new_layer_of_fSWAPs)
+
+        if direction == 'site2spin':
+            return layers_of_fSWAPs
+        else:
+            layers_of_fSWAPs.reverse()
+            return layers_of_fSWAPs
+
+    # If Sz_good == False and order == 'spin' we must move from spin order 
+    # to site order and back because constant-depth method does not work in that case.
+    if not Sz_good and order == 'spin':
+        connectivity = 'lin'
+    
+    q = QuantumRegister(2*N)
+    qc = QuantumCircuit(q)
+
+    # All-to-all connectivity
+    if connectivity == 'all':
+        # All-to-all connectivity, qubits ordered by spin
+        if order == 'spin':
+            # Initialization of spin wave function in first N qubits
+            spin_qubits = []
+            for i in range(N):
+                spin_qubits.append(q[i])
+            state_preparation_subcirc = spin_wf_qc.to_instruction()
+            qc.append(state_preparation_subcirc, spin_qubits)
+
+            # Sitewise application of spin-to-fermion mapping 
+            # (valid for conserved Sz only)
+            for i in range(0,N,2):
+                qc.x(q[i])
+                qc.cx(q[i],q[N+i])
+                qc.x(q[i])
+            for i in range(1,N,2):
+                qc.x(q[N+i])
+                qc.x(q[i])
+                qc.h(q[N+i])
+                qc.cx(q[i],q[N+i])
+                qc.h(q[N+i])
+                qc.x(q[N+i])
+                qc.cx(q[i],q[N+i])
+                qc.x(q[i])
+                
+        # All-to-all connectivity, qubits ordered by site
+        else:
+            # Initializing spin wave function in even qubits only
+            spin_qubits = []
+            for i in range(N):
+                spin_qubits.append(q[2*i])
+            state_preparation_subcirc = spin_wf_qc.to_instruction()
+            qc.append(state_preparation_subcirc, spin_qubits)
+
+            # Sitewise application of spin-to-fermion mapping
+            for i in range(N):
+                qc.x(q[2*i])
+                qc.cx(q[2*i],q[2*i+1])
+                qc.x(q[2*i])
+                
+    # Linear connectivity
+    else:
+        # Initialization of spin wave function in first N qubits 
+        # (for both spin and site order)
+        spin_qubits = []
+        for i in range(N):
+            spin_qubits.append(q[i])
+        state_preparation_subcirc = spin_wf_qc.to_instruction()
+        qc.append(state_preparation_subcirc, spin_qubits)
+
+        # Network of fermionic SWAPs (for both spin and site order)
+        qubit_pairs_fSWAPs = fSWAP_network_qubit_pairs(N, direction='spin2site')
+        for i in range(len(qubit_pairs_fSWAPs)):
+            for j in range(len(qubit_pairs_fSWAPs[i])):
+                qubit_1 = qubit_pairs_fSWAPs[i][j][0]
+                qubit_2 = qubit_pairs_fSWAPs[i][j][1]
+                # fSWAP
+                qc.h(q[qubit_1])
+                qc.cx(q[qubit_1],q[qubit_2])
+                qc.cx(q[qubit_2],q[qubit_1])
+                qc.h(q[qubit_2])
+
+        # Single-site spin-to-fermion mapping (for both spin and site order)
+        for i in range(N):
+            qc.x(q[2*i])
+            qc.cx(q[2*i],q[2*i+1])
+            qc.x(q[2*i])
+
+        # Network of fermionic SWAPs to return to spin order
+        if order == 'spin':
+            qubit_pairs_fSWAPs = fSWAP_network_qubit_pairs(N, direction='site2spin')
+            for i in range(len(qubit_pairs_fSWAPs)):
+                for j in range(len(qubit_pairs_fSWAPs[i])):
+                    qubit_1 = qubit_pairs_fSWAPs[i][j][0]
+                    qubit_2 = qubit_pairs_fSWAPs[i][j][1]
+                    # fSWAP
+                    qc.h(q[qubit_1])
+                    qc.cx(q[qubit_1],q[qubit_2])
+                    qc.cx(q[qubit_2],q[qubit_1])
+                    qc.h(q[qubit_2])
+        
+    backend = Aer.StatevectorSimulator()
+    qc_t = transpile(qc, backend)
+    job = backend.run(qc_t).result()
+    outputstate = job.data()['statevector'].data
+    
+    return outputstate, qc
+
 def long_range_CNOT_lin_con(n, order='ct'):
     """
     Function that outputs circuit that realizes CNOT between non-adjacent
@@ -151,6 +287,11 @@ def long_range_Fredkin_lin_con(n1, n2, order='ctt', min_metric = 'depth'):
             qc.cx(i+1,i)
             qc.cx(i,i+1)
     else:
+        if order == 'ttc':
+            n1_save = n1
+            n1 = n2
+            n2 = n1_save
+        
         if n1 != 0 or n2 != 0:
             m = optimal_m_Fredkin(n1, n2, min_metric)
         else:
@@ -367,7 +508,9 @@ def long_range_Toffoli_lin_con(n1, n2, order='cct', min_metric='depth'):
         
     return qc
 
-def multiplexor_basis_gate_decomp(gate_label, params, num_qubits, starting_call=True, cancel_cnots=False, forward=True):
+def multiplexor_basis_gate_decomp(gate_label, params, num_qubits, 
+                                  starting_call=True, cancel_cnots=False, 
+                                  forward=True):
     """
     Basis gate decomposition of direct sum of Rz or Ry single-qubit gates
     based on Theorems 4 and 8 from "Synthesis of Quantum Logic Circuits",

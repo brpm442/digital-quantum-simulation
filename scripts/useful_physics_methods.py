@@ -2,6 +2,7 @@ import numpy as np, scipy as sp, math as mt, cmath as cmt, qiskit, random, itert
 from qiskit import *
 from quspin.operators import hamiltonian
 from quspin.basis import tensor_basis, spin_basis_1d
+from useful_maths_methods import *
 
 def AKLT_Hamiltonian(N_site, N, coupling_map):
     '''
@@ -463,6 +464,43 @@ def random_MPS_generator_PBC(N, d, D, which, trans_invariant=True):
             MPS_arr.append(new_tensor)
         
     return MPS_arr 
+
+def spin_to_fermion_converter_by_hand(psi_spin, N, order='site'):
+    """
+    Function that, given the 2^N-dimensional vector corresponding
+    to a N-spin-1/2 wave function, generates the 4^N-dimensional
+    vector that is the corresponding fermionic version at half-filling.
+    If order == 'site', even bits 0, 2, 4, ... are for spin-up orbitals
+    and odd bits 1, 3, 5, ... are for spin-down ones, assuming spin-up
+    is associated with state |0) and spin-down with state |1). If order
+    == 'spin', first N bits correspond to spin-up orbitals and last N
+    bits to spin-down orbitals.
+    """
+    
+    psi_fermion = np.zeros((4**N,), dtype=complex)
+    for i in range(len(psi_spin)):
+        binary_label_spin = binary_rep(i, N)
+        binary_label_fermion = '0'*2*N
+        fermionic_sign = 1
+        spin_down_counter = 0
+        
+        for j in range(N):
+            if order == 'spin':
+                if binary_label_spin[j] == '0':
+                    binary_label_fermion = binary_label_fermion[:j]+'1'+binary_label_fermion[j+1:]
+                else:
+                    binary_label_fermion = binary_label_fermion[:N+j]+'1'+binary_label_fermion[N+j+1:]
+                    fermionic_sign = fermionic_sign * (-1)**(N-1-spin_down_counter-j)
+                    spin_down_counter = spin_down_counter + 1
+            else:
+                if binary_label_spin[j] == '0':
+                    binary_label_fermion = binary_label_fermion[:2*j]+'1'+binary_label_fermion[2*j+1:]
+                else:
+                    binary_label_fermion = binary_label_fermion[:2*j+1]+'1'+binary_label_fermion[2*j+2:]
+
+        psi_fermion[int(binary_label_fermion,2)] = fermionic_sign * psi_spin[i]
+
+    return psi_fermion    
 
 def symmetrization(N):
     '''
