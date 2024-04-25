@@ -28,5 +28,5 @@
     c. Lattice models of electrons (e.g., Slater determinants, Gutzwiller wave function).
 
 ## Organization
-For the sake of clarity, the *notebooks* folder includes Jupyter notebooks that include examples of the usage of the methods. The respective code scripts are in the *scripts* folder. 
+For the sake of clarity, the *notebooks* folder includes Jupyter notebooks that present examples of the usage of the methods. The respective code scripts are in the *scripts* folder. 
  
