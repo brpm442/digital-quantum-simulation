@@ -1,8 +1,8 @@
 import numpy as np, scipy as sp, math as mt, cmath as cmt, qiskit, itertools
 from qiskit import *
-from generic_MPS_methods import *
+from useful_physics_methods import *
 from generic_state_prep import *
-from useful_qc_methods import *
+from useful_computing_methods import *
 
 def GHZ_state_preparation(n, connectivity='all'):
     """
@@ -40,6 +40,9 @@ def Neel_state_preparation(n, alpha, beta, connectivity='all'):
     """
     if abs(np.absolute(alpha)**2 + np.absolute(beta)**2 - 1) > 1e-10:
         raise ValueError('Squares of norms of alpha and beta must sum to 1.')
+        
+    if n % 2 != 0:
+        raise ValueError('Number of qubits must be even for Neel state to be defined in bipartite lattice.')
         
     qc = QuantumCircuit(n)
     
